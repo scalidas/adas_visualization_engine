@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADAS Perception Visualization Engine</title>
+  <meta name="description" content="Real-time Autonomous Vehicle ADAS Perception visualization engine connected via WebSocket to display live telemetry, lane models, and tracked obstacles." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── App Header ── -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="14" stroke="#3B82F6" stroke-width="2"/>
+          <path d="M8 16 L14 10 L20 16 L14 22 Z" fill="#3B82F6" opacity="0.3"/>
+          <circle cx="16" cy="16" r="3" fill="#60A5FA"/>
+          <path d="M16 6 L16 9 M16 23 L16 26 M6 16 L9 16 M23 16 L26 16" stroke="#3B82F6" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="logo-text">ADAS<span class="logo-accent">VIS</span></span>
+      </div>
+      <div class="header-divider"></div>
+      <span class="header-subtitle">Perception Engine</span>
+    </div>
+
+    <!-- Center: WebSocket Connection Controls -->
+    <div class="header-center">
+      <div class="ws-connection-bar" id="ws-bar">
+        <div class="ws-status-badge status-disconnected" id="ws-status-badge" title="Connection Status">
+          <span class="ws-status-dot" id="ws-status-dot"></span>
+          <span class="ws-status-text" id="ws-status-text">DISCONNECTED</span>
+        </div>
+        <div class="ws-input-wrap">
+          <span class="ws-prefix-icon" title="WebSocket Protocol">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M2 9a6 6 0 0112 0M4 11a4 4 0 018 0M7 13a1 1 0 112 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <input
+            type="text"
+            id="ws-url-input"
+            class="ws-url-input"
+            value="ws://localhost:9002"
+            placeholder="ws://localhost:9002"
+            spellcheck="false"
+            autocomplete="off"
+            title="Backend WebSocket URL (ws://host:port)"
+          />
+        </div>
+        <button class="btn-ws-toggle" id="btn-ws-toggle" title="Connect or Disconnect from WebSocket backend">
+          <span id="ws-toggle-label">Connect</span>
+        </button>
+        <button class="btn-stream-pause" id="btn-stream-pause" title="Pause or Resume Live Stream Rendering">
+          <span class="pause-icon" id="pause-icon">⏸</span>
+          <span id="stream-pause-label">Live</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: Telemetry Badges -->
+    <div class="header-right">
+      <div id="rate-badge" class="telemetry-badge" title="Incoming Packet / Frame Rate">
+        <span class="badge-label">RATE</span>
+        <span id="rate-display" class="badge-value">0.0 Hz</span>
+      </div>
+      <div id="frame-badge" class="telemetry-badge" title="Frame Sequence Number">
+        <span class="badge-label">FRAME</span>
+        <span id="frame-seq-display" class="badge-value">—</span>
+      </div>
+      <div id="latency-badge" class="telemetry-badge" title="Frame Interval / Age">
+        <span class="badge-label">Δt</span>
+        <span id="latency-display" class="badge-value">—</span>
+      </div>
+      <div id="ts-badge" class="telemetry-badge" title="WorldModel Timestamp">
+        <span class="badge-label">TS</span>
+        <span id="ts-display" class="badge-value">—</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main App Layout ── -->
+  <main class="app-main">
+
+    <!-- ── Left Panel: Live Dashboard & Manual JSON ── -->
+    <aside class="panel panel-left" id="input-panel">
+      <!-- Panel Tabs -->
+      <div class="panel-tabs">
+        <button class="panel-tab active" data-tab="live" id="tab-live-btn">
+          <span class="tab-indicator-dot"></span>
+          Live Stream
+        </button>
+        <button class="panel-tab" data-tab="manual" id="tab-manual-btn">
+          Manual JSON
+        </button>
+      </div>
+
+      <!-- Tab 1: Live Stream Dashboard -->
+      <div class="tab-content" id="tab-content-live">
+        <div class="stream-dashboard">
+
+          <!-- Connection Info Card -->
+          <div class="stream-card">
+            <div class="stream-card-header">
+              <span class="stream-card-title">Backend Connection</span>
+              <span class="stream-pill" id="dashboard-status-pill">Offline</span>
+            </div>
+            <div class="card-detail-row">
+              <span class="card-detail-label">Endpoint</span>
+              <span class="card-detail-value font-mono" id="card-endpoint-val">ws://localhost:9002</span>
+            </div>
+            <div class="card-detail-row">
+              <span class="card-detail-label">Total Frames</span>
+              <span class="card-detail-value font-mono" id="card-total-frames">0</span>
+            </div>
+            <div class="card-detail-row">
+              <span class="card-detail-label">Retry State</span>
+              <span class="card-detail-value" id="card-retry-state">Auto-reconnect on</span>
+            </div>
+          </div>
+
+          <!-- Ego Telemetry Card -->
+          <div class="stream-card">
+            <div class="stream-card-header">
+              <span class="stream-card-title">Vehicle Telemetry</span>
+              <span class="stream-badge-accent">Ego State</span>
+            </div>
+            <div class="telemetry-grid">
+              <div class="telemetry-stat">
+                <span class="stat-label">Velocity</span>
+                <div class="stat-main">
+                  <span class="stat-value" id="dash-vel">0.00</span>
+                  <span class="stat-unit">m/s</span>
+                </div>
+                <span class="stat-sub" id="dash-vel-kmh">0.0 km/h</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">Steering</span>
+                <div class="stat-main">
+                  <span class="stat-value" id="dash-steer">0.000</span>
+                  <span class="stat-unit">rad</span>
+                </div>
+                <span class="stat-sub" id="dash-steer-deg">0.0°</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">Heading Yaw</span>
+                <div class="stat-main">
+                  <span class="stat-value" id="dash-yaw">0.000</span>
+                  <span class="stat-unit">rad</span>
+                </div>
+                <span class="stat-sub" id="dash-yaw-deg">0.0°</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">Coordinate Frame</span>
+                <div class="stat-main">
+                  <span class="stat-value font-mono" style="font-size:11px;">+X Fwd / +Y Right</span>
+                </div>
+                <span class="stat-sub">Meters (m)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lane Polynomial Model Card -->
+          <div class="stream-card">
+            <div class="stream-card-header">
+              <span class="stream-card-title">Active Lane Polynomials</span>
+              <span class="stream-badge-accent">y = c₀ + c₁x + c₂x²</span>
+            </div>
+            <div class="poly-container" id="dash-poly-container">
+              <div class="poly-row">
+                <span class="poly-name left">Left Boundary</span>
+                <span class="poly-eq" id="poly-left-eq">—</span>
+              </div>
+              <div class="poly-row">
+                <span class="poly-name center">Centerline</span>
+                <span class="poly-eq" id="poly-center-eq">—</span>
+              </div>
+              <div class="poly-row">
+                <span class="poly-name right">Right Boundary</span>
+                <span class="poly-eq" id="poly-right-eq">—</span>
+              </div>
+              <div class="poly-meta">
+                <span>Sample range: <strong id="poly-range">x: 0.2m → 5.0m (Δ0.1m)</strong></span>
+                <span>Width: <strong id="poly-lane-width">—</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="stream-actions">
+            <button class="btn-action" id="btn-snapshot-json" title="Copy current live frame JSON to Manual tab for inspection">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M4 2h8a2 2 0 012 2v10H4a2 2 0 01-2-2V4a2 2 0 012-2z" stroke="currentColor" stroke-width="1.2"/><path d="M6 6h4M6 9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              Snapshot to JSON Editor
+            </button>
+            <button class="btn-action" id="btn-copy-live-json" title="Copy live JSON to clipboard">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" stroke="currentColor" stroke-width="1.2"/></svg>
+              Copy Frame JSON
+            </button>
+            <button class="btn-action" id="btn-toggle-cam-panel" title="Toggle 2D Camera Viewfinder">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="5" r="0.75" fill="currentColor"/></svg>
+              Toggle 2D Camera View
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Tab 2: Manual JSON Input -->
+      <div class="tab-content hidden" id="tab-content-manual">
+        <div class="panel-header">
+          <span class="panel-title">World Model JSON</span>
+          <div class="panel-actions">
+            <button class="btn-icon" id="btn-clear" title="Clear input">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 3L13 13M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          id="json-input"
+          class="json-textarea"
+          spellcheck="false"
+          placeholder="Paste your WorldModel JSON here…"
+        ></textarea>
+
+        <div class="panel-footer">
+          <div id="json-status" class="json-status status-idle">Ready</div>
+          <button class="btn-primary" id="btn-render">
+            <svg viewBox="0 0 16 16" fill="none"><polygon points="4,2 14,8 4,14" fill="currentColor"/></svg>
+            Render Scene
+          </button>
+        </div>
+
+        <!-- Sample JSON Loader -->
+        <div class="sample-section">
+          <div class="sample-label">Load Preset Sample</div>
+          <div class="sample-buttons">
+            <button class="btn-sample highlight" data-sample="adas_backend" title="Official ADAS Backend JSON with bottle & stop sign">ADAS Backend</button>
+            <button class="btn-sample" data-sample="highway">Highway</button>
+            <button class="btn-sample" data-sample="stop_sign">Stop Sign</button>
+            <button class="btn-sample" data-sample="multi_object">Multi-Object</button>
+            <button class="btn-sample" data-sample="curve">Curved Lane</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Center: 3D Viewport ── -->
+    <section class="viewport-section">
+      <div class="viewport-container" id="viewport-container">
+        <canvas id="three-canvas"></canvas>
+
+        <!-- HUD: Top-Left (Ego Vehicle Real-Time Dynamics) -->
+        <div class="hud hud-topleft">
+          <div class="hud-stream-status" id="hud-stream-indicator">
+            <span class="hud-dot"></span>
+            <span class="hud-stream-txt" id="hud-stream-txt">STANDBY</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">Velocity</span>
+            <span class="hud-value" id="hud-velocity">—</span>
+            <span class="hud-unit">m/s</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">Yaw</span>
+            <span class="hud-value" id="hud-yaw">—</span>
+            <span class="hud-unit">rad</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">Steer</span>
+            <span class="hud-value" id="hud-steer">—</span>
+            <span class="hud-unit">rad</span>
+          </div>
+        </div>
+
+        <!-- HUD: Top-Right (Perception Track Counts) -->
+        <div class="hud hud-topright">
+          <div class="hud-row">
+            <span class="hud-label">Objects</span>
+            <span class="hud-value" id="hud-objects">—</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">Signs</span>
+            <span class="hud-value" id="hud-signs">—</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">Lanes</span>
+            <span class="hud-value" id="hud-lanes">—</span>
+          </div>
+        </div>
+
+        <!-- HUD: Bottom-Left (Controls hint + 2D Cam toggle) -->
+        <div class="hud hud-bottomleft">
+          <div class="hud-row-group">
+            <div class="cam-hint">
+              <span class="key">LMB</span> Orbit &nbsp;
+              <span class="key">RMB</span> Pan &nbsp;
+              <span class="key">Scroll</span> Zoom
+            </div>
+            <button class="btn-hud-tool" id="btn-hud-cam2d" title="Toggle 2D Camera Viewfinder Overlay">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2"/></svg>
+              <span>2D CAM</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- HUD: Bottom-Right (Camera Presets) -->
+        <div class="cam-presets hud-bottomright">
+          <button class="btn-cam active" data-cam="follow" title="Follow (Tesla-style 3rd Person)">
+            <svg viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+          <button class="btn-cam" data-cam="top" title="Bird's-Eye-View (BEV Top-Down)">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
+          </button>
+          <button class="btn-cam" data-cam="side" title="Side Profile View">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M2 12 L14 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg>
+          </button>
+        </div>
+
+        <!-- 2D Camera Viewfinder Overlay (Picture-in-Picture) -->
+        <div class="cam2d-overlay" id="cam2d-overlay">
+          <div class="cam2d-header">
+            <div class="cam2d-title-group">
+              <span class="cam2d-rec-dot"></span>
+              <span class="cam2d-title">CAM: FRONT // 640×480</span>
+            </div>
+            <div class="cam2d-actions">
+              <button class="btn-cam2d-close" id="btn-cam2d-close" title="Minimize 2D Camera View">✕</button>
+            </div>
+          </div>
+          <div class="cam2d-canvas-wrap">
+            <canvas id="cam2d-canvas" width="640" height="480"></canvas>
+            <div class="cam2d-hud-reticle"></div>
+          </div>
+          <div class="cam2d-footer">
+            <span id="cam2d-box-count">0 BBoxes Tracked</span>
+            <span class="cam2d-sub">Vehicle Frame Camera Space</span>
+          </div>
+        </div>
+
+        <!-- Viewport Placeholder (shown on launch before first data) -->
+        <div class="viewport-placeholder" id="viewport-placeholder">
+          <div class="placeholder-icon">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="32" cy="32" r="28" stroke="#1E3A5F" stroke-width="2"/>
+              <path d="M18 38 Q32 20 46 38" stroke="#3B82F6" stroke-width="2" stroke-linecap="round" fill="none"/>
+              <rect x="26" y="30" width="12" height="8" rx="1.5" stroke="#60A5FA" stroke-width="1.5"/>
+              <circle cx="22" cy="44" r="3" stroke="#60A5FA" stroke-width="1.5"/>
+              <circle cx="42" cy="44" r="3" stroke="#60A5FA" stroke-width="1.5"/>
+              <path d="M32 14 L32 10 M32 54 L32 58 M14 32 L10 32 M54 32 L58 32" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="placeholder-title">ADAS Perception Visualization</div>
+          <div class="placeholder-sub" id="placeholder-status-desc">
+            Connecting to ADAS Perception backend at <strong id="placeholder-url">ws://localhost:9002</strong>…
+          </div>
+          <div class="placeholder-actions">
+            <button class="btn-sample highlight" id="btn-placeholder-sample">Load Reference Sample</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Right Panel: Tracked Objects, Signs, & Lanes ── -->
+    <aside class="panel panel-right">
+      <div class="panel-header">
+        <span class="panel-title">Tracked Obstacles</span>
+        <span class="panel-badge-count" id="count-obstacles">0</span>
+      </div>
+      <div class="object-list" id="object-list">
+        <div class="empty-state">No obstacles detected.</div>
+      </div>
+
+      <div class="panel-header" style="margin-top: 12px;">
+        <span class="panel-title">Traffic Signs</span>
+        <span class="panel-badge-count" id="count-signs">0</span>
+      </div>
+      <div class="object-list" id="sign-list">
+        <div class="empty-state">No signs detected.</div>
+      </div>
+
+      <div class="panel-header" style="margin-top: 12px;">
+        <span class="panel-title">Lane Model Info</span>
+      </div>
+      <div class="lane-info" id="lane-info">
+        <div class="empty-state">No lane data.</div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- Three.js from CDN via importmap -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

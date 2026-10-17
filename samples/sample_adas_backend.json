@@ -1,0 +1,71 @@
+{
+  "timestamp_us": 1729135000123456,
+  "frame_seq": 1042,
+  "ego_state": {
+    "x": 0.0,
+    "y": 0.0,
+    "yaw": 0.0,
+    "velocity": 0.0,
+    "steering_angle": 0.0
+  },
+  "current_lane": {
+    "lane_id": 1,
+    "lane_width": 0.50,
+    "can_change_left": true,
+    "can_change_right": true,
+    "left_boundary": {
+      "c0": -0.25,
+      "c1": 0.01,
+      "c2": -0.002
+    },
+    "right_boundary": {
+      "c0": 0.25,
+      "c1": -0.01,
+      "c2": 0.002
+    },
+    "centerline": {
+      "c0": 0.0,
+      "c1": 0.0,
+      "c2": 0.0
+    }
+  },
+  "left_neighbor_lane": null,
+  "right_neighbor_lane": null,
+  "obstacles": [
+    {
+      "id": 0,
+      "label": "bottle",
+      "confidence": 0.85,
+      "bounding_box": {
+        "x": 240.0,
+        "y": 180.0,
+        "width": 80.0,
+        "height": 160.0
+      },
+      "position": {
+        "x": 1.45,
+        "y": -0.12,
+        "z": 0.05
+      },
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "length": 0.10,
+      "width": 0.10,
+      "height": 0.26
+    }
+  ],
+  "traffic_signs": [
+    {
+      "type": "STOP_SIGN",
+      "position": {
+        "x": 3.5,
+        "y": 0.8,
+        "z": 0.5
+      },
+      "confidence": 0.92
+    }
+  ]
+}

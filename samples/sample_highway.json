@@ -1,0 +1,81 @@
+{
+  "timestamp_us": 1726189200123456,
+  "frame_seq": 1042,
+  "ego_state": {
+    "x": 3.452,
+    "y": 1.108,
+    "yaw": 0.045,
+    "velocity": 0.85,
+    "steering_angle": -0.012
+  },
+  "current_lane": {
+    "lane_id": 0,
+    "lane_width": 0.50,
+    "can_change_left": false,
+    "can_change_right": true,
+    "left_boundary": {
+      "c0": -0.25,
+      "c1": 0.005,
+      "c2": -0.001
+    },
+    "right_boundary": {
+      "c0": 0.25,
+      "c1": 0.005,
+      "c2": -0.001
+    },
+    "centerline": {
+      "c0": 0.00,
+      "c1": 0.005,
+      "c2": -0.001
+    }
+  },
+  "left_neighbor_lane": null,
+  "right_neighbor_lane": {
+    "lane_id": 1,
+    "lane_width": 0.50,
+    "can_change_left": true,
+    "can_change_right": false,
+    "left_boundary": {
+      "c0": 0.25,
+      "c1": 0.005,
+      "c2": -0.001
+    },
+    "right_boundary": {
+      "c0": 0.75,
+      "c1": 0.005,
+      "c2": -0.001
+    },
+    "centerline": {
+      "c0": 0.50,
+      "c1": 0.005,
+      "c2": -0.001
+    }
+  },
+  "obstacles": [
+    {
+      "id": 101,
+      "label": "vehicle",
+      "confidence": 0.94,
+      "bounding_box": {
+        "x": 300.0,
+        "y": 200.0,
+        "width": 110.0,
+        "height": 90.0
+      },
+      "position": {
+        "x": 1.42,
+        "y": 0.02,
+        "z": 0.06
+      },
+      "velocity": {
+        "x": 0.80,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "length": 0.32,
+      "width": 0.18,
+      "height": 0.14
+    }
+  ],
+  "traffic_signs": []
+}
