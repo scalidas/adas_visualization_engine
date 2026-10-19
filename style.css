@@ -1348,6 +1348,102 @@ body {
 .lane-badge.no   { background: rgba(74,112,144,0.1);  color: var(--text-disabled); border: 1px solid rgba(74,112,144,0.2); }
 .lane-badge.info { background: rgba(59,130,246,0.12); color: var(--blue-400); border: 1px solid rgba(59,130,246,0.2); }
 
+/* ── Planned Trajectory Info ── */
+.traj-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  border-left: 3px solid #00F5D4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.traj-card.emergency {
+  border-left-color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.traj-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.traj-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #00F5D4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.traj-card.emergency .traj-card-title {
+  color: var(--accent-red);
+}
+
+.traj-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.traj-badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  background: rgba(0, 245, 212, 0.12);
+  color: #00F5D4;
+  border: 1px solid rgba(0, 245, 212, 0.3);
+}
+
+.traj-badge.emergency {
+  background: rgba(239, 68, 68, 0.2);
+  color: #F87171;
+  border-color: rgba(239, 68, 68, 0.5);
+  animation: pulse-dot 1s infinite ease-in-out;
+}
+
+.traj-points-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(26, 58, 96, 0.4);
+  padding-top: 6px;
+  scrollbar-width: thin;
+}
+
+.traj-point-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: rgba(4, 13, 26, 0.45);
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.traj-point-idx {
+  color: #00F5D4;
+  font-weight: 600;
+  font-size: 9px;
+  min-width: 20px;
+}
+
+.traj-point-coords {
+  color: var(--text-primary);
+}
+
+.traj-point-vel {
+  color: var(--blue-400);
+}
+
 /* ── Scrollbars & Background Grid ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

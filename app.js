@@ -43,9 +43,12 @@ const COLORS = {
   stopSign:       0xEF4444,  // red
   laneLine:       0xFFFFFF,  // white
   laneCenterline: 0x60A5FA,  // light blue for ego centerline
-  ground:         0x040D1A,
-  grid:           0x0D2440,
-  ego:            0x60A5FA,  // ego vehicle light blue
+  ground:              0x040D1A,
+  grid:                0x0D2440,
+  ego:                 0x60A5FA,  // ego vehicle light blue
+  trajectory:          0x00F5D4,  // neon cyan / emerald planned path
+  trajectoryEmergency: 0xEF4444,  // emergency stop red
+  trajectoryBead:      0x22D3EE,  // waypoint bead cyan
 };
 
 // ─────────────────────────────────────────────
@@ -874,10 +877,171 @@ function buildTrafficSign(sign) {
 }
 
 // ─────────────────────────────────────────────
+// Planned Trajectory Geometry
+// ─────────────────────────────────────────────
+
+function buildTrajectoryGeometry(trajectory) {
+  if (!trajectory || !Array.isArray(trajectory.points) || trajectory.points.length === 0) {
+    return null;
+  }
+
+  const group = new THREE.Group();
+  const points = trajectory.points;
+  const isEmergency = Boolean(trajectory.is_emergency_stop);
+  const ribbonColor = isEmergency ? 0xEF4444 : 0x06B6D4;
+  const emissiveColor = isEmergency ? 0xEF4444 : 0x00F5D4;
+
+  // Convert points to Three.js coordinates
+  // Elevation Y = 0.015m sits nicely above ground plane and lane fill
+  const threePts = points.map(p => toThree(p.x, p.y, 0.015));
+
+  // If we have >= 2 points, construct the 3D ribbon path
+  if (threePts.length >= 2) {
+    const ribbonHalfWidth = 0.09; // 18cm total width ribbon
+    const vertices = [];
+    const indices = [];
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const tPt = threePts[i];
+      const yaw = Number(p.yaw) || 0;
+
+      // In vehicle frame, +X is fwd, +Y is right.
+      // Unit normal to the right in vehicle frame: (-sin(yaw), cos(yaw))
+      // In Three.js: X = Y_veh, Z = -X_veh
+      let nx = Math.cos(yaw);
+      let nz = Math.sin(yaw);
+
+      // Smooth blend with segment tangent
+      if (i < points.length - 1) {
+        const dx = threePts[i + 1].x - tPt.x;
+        const dz = threePts[i + 1].z - tPt.z;
+        const len = Math.sqrt(dx * dx + dz * dz);
+        if (len > 0.001) {
+          const segNx = -dz / len;
+          const segNz = dx / len;
+          nx = (nx + segNx) * 0.5;
+          nz = (nz + segNz) * 0.5;
+          const nLen = Math.sqrt(nx * nx + nz * nz);
+          if (nLen > 0.001) { nx /= nLen; nz /= nLen; }
+        }
+      }
+
+      // Left and right vertices
+      vertices.push(tPt.x - nx * ribbonHalfWidth, 0.012, tPt.z - nz * ribbonHalfWidth);
+      vertices.push(tPt.x + nx * ribbonHalfWidth, 0.012, tPt.z + nz * ribbonHalfWidth);
+
+      if (i < points.length - 1) {
+        const a = i * 2;
+        const b = i * 2 + 1;
+        const c = i * 2 + 2;
+        const d = i * 2 + 3;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+
+    const ribbonGeo = new THREE.BufferGeometry();
+    ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    ribbonGeo.setIndex(indices);
+    ribbonGeo.computeVertexNormals();
+
+    const ribbonMat = new THREE.MeshStandardMaterial({
+      color: ribbonColor,
+      emissive: emissiveColor,
+      emissiveIntensity: isEmergency ? 0.85 : 0.45,
+      roughness: 0.3,
+      metalness: 0.1,
+      transparent: true,
+      opacity: isEmergency ? 0.75 : 0.50,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    group.add(new THREE.Mesh(ribbonGeo, ribbonMat));
+
+    // Centerline path along waypoints
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(
+      threePts.map(pt => new THREE.Vector3(pt.x, 0.016, pt.z))
+    );
+    const lineMat = new THREE.LineBasicMaterial({
+      color: isEmergency ? 0xFCA5A5 : 0xFFFFFF,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.95,
+    });
+    group.add(new THREE.Line(lineGeo, lineMat));
+  }
+
+  // Waypoint discs / beads & directional markers
+  const beadGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.004, 16);
+  const beadMat = new THREE.MeshStandardMaterial({
+    color: isEmergency ? 0xEF4444 : 0x00F5D4,
+    emissive: isEmergency ? 0xFF2222 : 0x00E5C0,
+    emissiveIntensity: 0.6,
+    roughness: 0.2,
+  });
+
+  for (let i = 0; i < points.length; i++) {
+    const pt = points[i];
+    const tPt = threePts[i];
+
+    // Waypoint disc on road
+    const bead = new THREE.Mesh(beadGeo, beadMat);
+    bead.position.set(tPt.x, 0.018, tPt.z);
+    group.add(bead);
+
+    // Direction arrow / heading indicator for each waypoint
+    const yaw = Number(pt.yaw) || 0;
+    const dirX = Math.sin(yaw);
+    const dirZ = -Math.cos(yaw);
+    const dir = new THREE.Vector3(dirX, 0, dirZ).normalize();
+
+    const arrow = new THREE.ArrowHelper(
+      dir,
+      new THREE.Vector3(tPt.x, 0.022, tPt.z),
+      0.08,
+      isEmergency ? 0xFCA5A5 : 0x22D3EE,
+      0.03,
+      0.025
+    );
+    group.add(arrow);
+  }
+
+  // Final destination beacon & target velocity text tag
+  if (points.length > 0) {
+    const lastPt = points[points.length - 1];
+    const lastTPt = threePts[threePts.length - 1];
+
+    // End beacon ring
+    const ringGeo = new THREE.RingGeometry(0.04, 0.065, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: isEmergency ? 0xEF4444 : 0x00F5D4,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(lastTPt.x, 0.020, lastTPt.z);
+    group.add(ring);
+
+    // Floating billboard label
+    const tagText = isEmergency
+      ? 'EMERGENCY STOP'
+      : `v_tgt: ${(lastPt.target_velocity ?? 0).toFixed(1)} m/s`;
+    const labelSprite = makeTextSprite(tagText, isEmergency ? 0xEF4444 : 0x00F5D4);
+    labelSprite.position.set(lastTPt.x, 0.14, lastTPt.z);
+    labelSprite.scale.set(0.38, 0.09, 1);
+    group.add(labelSprite);
+  }
+
+  return group;
+}
+
+// ─────────────────────────────────────────────
 // 2D Camera Viewfinder Overlay (640×480 Camera Space)
 // ─────────────────────────────────────────────
 
-function render2DCameraView(obstacles = [], signs = []) {
+function render2DCameraView(obstacles = [], signs = [], trajectory = null) {
   const canvas = document.getElementById('cam2d-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -984,10 +1148,59 @@ function render2DCameraView(obstacles = [], signs = []) {
     ctx.fillText(tagText, bx + 6, pillY + 14);
   }
 
+  // Draw Trajectory Projection on 2D Camera Viewfinder
+  if (trajectory && Array.isArray(trajectory.points) && trajectory.points.length >= 2) {
+    const isEmergency = Boolean(trajectory.is_emergency_stop);
+    const trajColor = isEmergency ? '#EF4444' : '#00F5D4';
+
+    ctx.strokeStyle = trajColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+
+    let started = false;
+    for (const p of trajectory.points) {
+      const px = Number(p.x) || 0;
+      const py = Number(p.y) || 0;
+      if (px < 0.05) continue; // skip points at or behind camera
+
+      // Ground plane perspective projection into 640x480 camera view
+      const camX = 320 + (py * 300) / (px + 0.2);
+      const camY = 240 + 190 / (px + 0.3);
+
+      if (camX < 0 || camX > w || camY < 0 || camY > h) continue;
+
+      if (!started) {
+        ctx.moveTo(camX, camY);
+        started = true;
+      } else {
+        ctx.lineTo(camX, camY);
+      }
+    }
+    if (started) {
+      ctx.stroke();
+    }
+
+    // Waypoint dots
+    ctx.fillStyle = trajColor;
+    for (const p of trajectory.points) {
+      const px = Number(p.x) || 0;
+      const py = Number(p.y) || 0;
+      if (px < 0.05) continue;
+      const camX = 320 + (py * 300) / (px + 0.2);
+      const camY = 240 + 190 / (px + 0.3);
+      if (camX >= 0 && camX <= w && camY >= 0 && camY <= h) {
+        ctx.beginPath();
+        ctx.arc(camX, camY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   // Update footer count
   const countEl = document.getElementById('cam2d-box-count');
   if (countEl) {
-    countEl.textContent = `${boxCount} 2D BBoxes Tracked`;
+    const trajCount = trajectory && Array.isArray(trajectory.points) ? trajectory.points.length : 0;
+    countEl.textContent = `${boxCount} BBoxes | ${trajCount} Traj Pts`;
   }
 }
 
@@ -1063,8 +1276,17 @@ function buildSceneFromWorldModel(wm) {
     sceneObjects.push(signMesh);
   }
 
+  // ── Planned Trajectory ──
+  if (wm.trajectory) {
+    const trajMesh = buildTrajectoryGeometry(wm.trajectory);
+    if (trajMesh) {
+      scene.add(trajMesh);
+      sceneObjects.push(trajMesh);
+    }
+  }
+
   // ── Update 2D Camera Viewfinder ──
-  render2DCameraView(obstacles, signs);
+  render2DCameraView(obstacles, signs, wm.trajectory);
 
   // ── Update HUDs and Side Panels ──
   updateHUD(wm, laneCount);
@@ -1115,6 +1337,24 @@ function updateHUD(wm, laneCount) {
 
   const hudLanes = document.getElementById('hud-lanes');
   if (hudLanes) hudLanes.textContent = laneCount;
+
+  // Viewport top-right trajectory waypoint count
+  const hudTraj = document.getElementById('hud-traj');
+  if (hudTraj) {
+    if (wm.trajectory && Array.isArray(wm.trajectory.points) && wm.trajectory.points.length > 0) {
+      const count = wm.trajectory.points.length;
+      if (wm.trajectory.is_emergency_stop) {
+        hudTraj.textContent = `E-STOP (${count})`;
+        hudTraj.style.color = '#EF4444';
+      } else {
+        hudTraj.textContent = `${count} pts`;
+        hudTraj.style.color = '#00F5D4';
+      }
+    } else {
+      hudTraj.textContent = '—';
+      hudTraj.style.color = '';
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1173,6 +1413,85 @@ function updateDashboard(wm) {
     if (laneWidthEl) laneWidthEl.textContent = (lane.lane_width?.toFixed(2) ?? '0.50') + 'm';
   }
 
+  // Planned Trajectory Card
+  const trajCard = document.getElementById('dash-traj-card');
+  const trajPill = document.getElementById('traj-status-pill');
+  const trajTargetVel = document.getElementById('traj-target-vel');
+  const trajTargetVelKmh = document.getElementById('traj-target-vel-kmh');
+  const trajLookahead = document.getElementById('traj-lookahead');
+  const trajPointsCount = document.getElementById('traj-points-count');
+  const trajEndYaw = document.getElementById('traj-end-yaw');
+  const trajEndYawDeg = document.getElementById('traj-end-yaw-deg');
+  const trajEstopStatus = document.getElementById('traj-estop-status');
+  const trajModeSub = document.getElementById('traj-mode-sub');
+
+  if (wm.trajectory && Array.isArray(wm.trajectory.points) && wm.trajectory.points.length > 0) {
+    const pts = wm.trajectory.points;
+    const isEmergency = Boolean(wm.trajectory.is_emergency_stop);
+    const lastPt = pts[pts.length - 1];
+    const lookaheadDist = Math.sqrt((lastPt.x || 0) ** 2 + (lastPt.y || 0) ** 2);
+    const targetVel = lastPt.target_velocity ?? 0;
+    const endYaw = lastPt.yaw ?? 0;
+
+    if (trajPill) {
+      trajPill.textContent = isEmergency ? 'E-STOP' : 'Active';
+      trajPill.className = `stream-pill ${isEmergency ? 'emergency' : 'connected'}`;
+      if (isEmergency) {
+        trajPill.style.background = 'rgba(239, 68, 68, 0.2)';
+        trajPill.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+        trajPill.style.color = '#EF4444';
+      } else {
+        trajPill.style.background = 'rgba(0, 245, 212, 0.15)';
+        trajPill.style.borderColor = 'rgba(0, 245, 212, 0.4)';
+        trajPill.style.color = '#00F5D4';
+      }
+    }
+
+    if (trajTargetVel) trajTargetVel.textContent = targetVel.toFixed(2);
+    if (trajTargetVelKmh) trajTargetVelKmh.textContent = (targetVel * 3.6).toFixed(1) + ' km/h';
+    if (trajLookahead) trajLookahead.textContent = lookaheadDist.toFixed(2);
+    if (trajPointsCount) trajPointsCount.textContent = `${pts.length} waypoints`;
+    if (trajEndYaw) trajEndYaw.textContent = endYaw.toFixed(3);
+    if (trajEndYawDeg) trajEndYawDeg.textContent = (endYaw * (180 / Math.PI)).toFixed(1) + '°';
+
+    if (trajEstopStatus) {
+      trajEstopStatus.textContent = isEmergency ? 'EMERGENCY' : 'NORMAL';
+      trajEstopStatus.style.color = isEmergency ? '#EF4444' : '#00F5D4';
+    }
+    if (trajModeSub) {
+      trajModeSub.textContent = isEmergency ? 'E-STOP TRIGGERED' : 'Path Tracking Active';
+      trajModeSub.style.color = isEmergency ? '#F87171' : 'var(--text-muted)';
+    }
+
+    if (trajCard) {
+      if (isEmergency) trajCard.classList.add('emergency');
+      else trajCard.classList.remove('emergency');
+    }
+  } else {
+    if (trajPill) {
+      trajPill.textContent = 'No Plan';
+      trajPill.className = 'stream-pill';
+      trajPill.style.background = '';
+      trajPill.style.borderColor = '';
+      trajPill.style.color = '';
+    }
+    if (trajTargetVel) trajTargetVel.textContent = '0.00';
+    if (trajTargetVelKmh) trajTargetVelKmh.textContent = '0.0 km/h';
+    if (trajLookahead) trajLookahead.textContent = '0.00';
+    if (trajPointsCount) trajPointsCount.textContent = '0 waypoints';
+    if (trajEndYaw) trajEndYaw.textContent = '0.000';
+    if (trajEndYawDeg) trajEndYawDeg.textContent = '0.0°';
+    if (trajEstopStatus) {
+      trajEstopStatus.textContent = 'STANDBY';
+      trajEstopStatus.style.color = '';
+    }
+    if (trajModeSub) {
+      trajModeSub.textContent = 'No Active Path';
+      trajModeSub.style.color = '';
+    }
+    if (trajCard) trajCard.classList.remove('emergency');
+  }
+
   // Total frames in card
   const totalFramesEl = document.getElementById('card-total-frames');
   if (totalFramesEl && streamClient) {
@@ -1181,7 +1500,7 @@ function updateDashboard(wm) {
 }
 
 // ─────────────────────────────────────────────
-// Side Panel (Objects, Signs, Lanes) Updates
+// Side Panel (Objects, Signs, Lanes, Trajectory) Updates
 // ─────────────────────────────────────────────
 
 function confClass(c) {
@@ -1194,6 +1513,57 @@ function updateSidePanels(wm) {
   updateObjectList(wm.obstacles || []);
   updateSignList(wm.traffic_signs || []);
   updateLaneInfo(wm);
+  updateTrajectoryList(wm.trajectory);
+}
+
+function updateTrajectoryList(trajectory) {
+  const el = document.getElementById('trajectory-list');
+  const countBadge = document.getElementById('count-traj-points');
+
+  const pts = trajectory && Array.isArray(trajectory.points) ? trajectory.points : [];
+  if (countBadge) countBadge.textContent = `${pts.length} pts`;
+
+  if (!el) return;
+  if (!pts.length) {
+    el.innerHTML = '<div class="empty-state">No trajectory planned.</div>';
+    return;
+  }
+
+  const isEmergency = Boolean(trajectory.is_emergency_stop);
+  const lastPt = pts[pts.length - 1];
+  const lookaheadDist = Math.sqrt((lastPt.x || 0) ** 2 + (lastPt.y || 0) ** 2);
+  const targetVel = lastPt.target_velocity ?? 0;
+
+  const pointsRowsHtml = pts.map((p, idx) => {
+    const px = (Number(p.x) || 0).toFixed(2);
+    const py = (Number(p.y) || 0).toFixed(2);
+    const pyaw = ((Number(p.yaw) || 0) * (180 / Math.PI)).toFixed(1);
+    const pvel = (Number(p.target_velocity) || 0).toFixed(2);
+    return `
+      <div class="traj-point-row">
+        <span class="traj-point-idx">#${idx}</span>
+        <span class="traj-point-coords">(${px}, ${py})</span>
+        <span class="traj-point-yaw font-mono" style="color:var(--text-muted);font-size:9px;">${pyaw}°</span>
+        <span class="traj-point-vel">${pvel} m/s</span>
+      </div>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="traj-card ${isEmergency ? 'emergency' : ''}">
+      <div class="traj-card-header">
+        <span class="traj-card-title">${isEmergency ? '⚠ EMERGENCY STOP' : 'PLANNED PATH'}</span>
+        <span class="traj-badge ${isEmergency ? 'emergency' : ''}">${pts.length} WPTS</span>
+      </div>
+      <div class="traj-badges">
+        <span class="traj-badge">Lookahead: ${lookaheadDist.toFixed(2)}m</span>
+        <span class="traj-badge">Target: ${targetVel.toFixed(2)}m/s</span>
+      </div>
+      <div class="traj-points-list">
+        ${pointsRowsHtml}
+      </div>
+    </div>
+  `;
 }
 
 function updateObjectList(obstacles) {
@@ -1328,8 +1698,8 @@ function updateLaneInfo(wm) {
 
 const SAMPLES = {
   adas_backend: JSON.stringify({
-    "timestamp_us": 1729135000123456,
-    "frame_seq": 1042,
+    "timestamp_us": 123456789,
+    "frame_seq": 42,
     "ego_state": {
       "x": 0.0,
       "y": 0.0,
@@ -1342,49 +1712,37 @@ const SAMPLES = {
       "lane_width": 0.50,
       "can_change_left": true,
       "can_change_right": true,
-      "left_boundary": { "c0": -0.25, "c1": 0.01, "c2": -0.002 },
-      "right_boundary": { "c0": 0.25, "c1": -0.01, "c2": 0.002 },
+      "left_boundary": { "c0": -0.25, "c1": 0.0, "c2": 0.0 },
+      "right_boundary": { "c0": 0.25, "c1": 0.0, "c2": 0.0 },
       "centerline": { "c0": 0.0, "c1": 0.0, "c2": 0.0 }
     },
     "left_neighbor_lane": null,
     "right_neighbor_lane": null,
     "obstacles": [
       {
-        "id": 0,
+        "id": 1,
         "label": "bottle",
-        "confidence": 0.85,
-        "bounding_box": {
-          "x": 240.0,
-          "y": 180.0,
-          "width": 80.0,
-          "height": 160.0
-        },
-        "position": {
-          "x": 1.45,
-          "y": -0.12,
-          "z": 0.05
-        },
-        "velocity": {
-          "x": 0.0,
-          "y": 0.0,
-          "z": 0.0
-        },
+        "confidence": 0.88,
+        "bounding_box": { "x": 120.0, "y": 140.0, "width": 80.0, "height": 160.0 },
+        "position": { "x": 1.50, "y": -0.15, "z": 0.0 },
+        "velocity": { "x": 0.0, "y": 0.0, "z": 0.0 },
         "length": 0.10,
         "width": 0.10,
-        "height": 0.26
+        "height": 0.25
       }
     ],
-    "traffic_signs": [
-      {
-        "type": "STOP_SIGN",
-        "position": {
-          "x": 3.5,
-          "y": 0.8,
-          "z": 0.5
-        },
-        "confidence": 0.92
-      }
-    ]
+    "traffic_signs": [],
+    "trajectory": {
+      "timestamp_us": 123456795,
+      "is_emergency_stop": false,
+      "points": [
+        { "x": 0.00, "y": 0.00, "yaw": 0.00, "target_velocity": 1.00 },
+        { "x": 0.50, "y": 0.01, "yaw": 0.02, "target_velocity": 1.00 },
+        { "x": 1.00, "y": 0.03, "yaw": 0.04, "target_velocity": 1.00 },
+        { "x": 1.50, "y": 0.06, "yaw": 0.05, "target_velocity": 1.00 },
+        { "x": 2.00, "y": 0.10, "yaw": 0.07, "target_velocity": 1.00 }
+      ]
+    }
   }, null, 2),
 
   highway: JSON.stringify({
@@ -1413,7 +1771,18 @@ const SAMPLES = {
         "length": 0.32, "width": 0.18, "height": 0.14
       }
     ],
-    "traffic_signs": []
+    "traffic_signs": [],
+    "trajectory": {
+      "timestamp_us": 1726189200123500,
+      "is_emergency_stop": false,
+      "points": [
+        { "x": 0.00, "y": 0.00, "yaw": 0.045, "target_velocity": 0.85 },
+        { "x": 0.75, "y": 0.01, "yaw": 0.045, "target_velocity": 0.85 },
+        { "x": 1.50, "y": 0.02, "yaw": 0.045, "target_velocity": 0.85 },
+        { "x": 2.25, "y": 0.03, "yaw": 0.045, "target_velocity": 0.85 },
+        { "x": 3.00, "y": 0.04, "yaw": 0.045, "target_velocity": 0.85 }
+      ]
+    }
   }, null, 2),
 
   stop_sign: JSON.stringify({
@@ -1442,7 +1811,16 @@ const SAMPLES = {
         "type": "STOP_SIGN", "confidence": 0.97,
         "position": { "x": 2.50, "y": 0.38, "z": 0.24 }
       }
-    ]
+    ],
+    "trajectory": {
+      "timestamp_us": 1726189200200050,
+      "is_emergency_stop": true,
+      "points": [
+        { "x": 0.00, "y": 0.00, "yaw": 0.00, "target_velocity": 0.25 },
+        { "x": 0.50, "y": 0.00, "yaw": 0.00, "target_velocity": 0.10 },
+        { "x": 1.00, "y": 0.00, "yaw": 0.00, "target_velocity": 0.00 }
+      ]
+    }
   }, null, 2),
 
   multi_object: JSON.stringify({

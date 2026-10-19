@@ -16,10 +16,11 @@ Streams live telemetry, lane models, and tracked 3D/2D obstacles over **WebSocke
 | **Ego Vehicle** | Stylized car model with dynamic steering angle animation responding to live telemetry |
 | **Lane Geometry** | Samples 2nd-degree polynomials $y(x) = c_0 + c_1 x + c_2 x^2$ from $x=0.2\text{m}$ to $5.0\text{m}$ with blue corridor fill |
 | **3D Tracked Obstacles** | Color-coded 3D wireframe boxes with corner brackets, velocity vectors, and confidence tags |
-| **2D Camera Viewfinder (PiP)** | Picture-in-picture 640×480 forward camera HUD rendering 2D bounding boxes in normalized camera space |
+| **Planned Trajectory Corridor** | 3D ribbon path, centerline guide, heading orientation arrows, waypoint beads, destination beacon, target velocity floating tag, and emergency stop styling |
+| **2D Camera Viewfinder (PiP)** | Picture-in-picture 640×480 forward camera HUD rendering 2D bounding boxes and projected trajectory corridor |
 | **Traffic Signs** | Octagonal 3D stop-sign geometry with ground posts and distance tracking |
 | **Camera Presets** | Follow (Tesla-style 3rd person), Bird's-Eye-View (BEV top-down), and Side profile |
-| **Dual Mode Interface** | **Live Stream** tab (telemetry gauges, connection health, formulas) & **Manual JSON** tab (editor & offline samples) |
+| **Dual Mode Interface** | **Live Stream** tab (telemetry gauges, trajectory metrics, connection health, formulas) & **Manual JSON** tab (editor & offline samples) |
 
 ---
 
@@ -137,7 +138,18 @@ Incoming WebSocket messages must be JSON strings matching:
       },
       "confidence": 0.92
     }
-  ]
+  ],
+  "trajectory": {
+    "timestamp_us": 123456795,
+    "is_emergency_stop": false,
+    "points": [
+      { "x": 0.00, "y": 0.00, "yaw": 0.00, "target_velocity": 1.00 },
+      { "x": 0.50, "y": 0.01, "yaw": 0.02, "target_velocity": 1.00 },
+      { "x": 1.00, "y": 0.03, "yaw": 0.04, "target_velocity": 1.00 },
+      { "x": 1.50, "y": 0.06, "yaw": 0.05, "target_velocity": 1.00 },
+      { "x": 2.00, "y": 0.10, "yaw": 0.07, "target_velocity": 1.00 }
+    ]
+  }
 }
 ```
 
@@ -194,4 +206,20 @@ This project's visualization web application (`index.html`, `style.css`, `app.js
   - 2nd-degree polynomial sampling ($x = 0.2\text{m} \to 5.0\text{m}$, step $0.1\text{m}$) and math HUD display.
   - Picture-in-picture 2D camera viewfinder overlay ($640 \times 480$ normalized camera space) with crosshairs and 2D bounding boxes.
   - Live stream telemetry dashboard with velocity, steering angle, and yaw indicators.
+
+#### Phase 3 — Trajectory Planning Visualization & Autonomous Path Rendering
+- **Date:** October 2026
+- **Model:** Gemini 3.8 Flash (High) / Antigravity Agent
+- **Prompt Submitted:**
+  > *"I have added the Trajectory to the WorldModel that we are rendering. The trajectory consists of a list of positions and yaw. Add in a rendering of the Trajectory accordingly. Update the AI citation.*  
+  > `{ timestamp_us, frame_seq, ego_state, current_lane, left_neighbor_lane, right_neighbor_lane, obstacles, traffic_signs, trajectory: { timestamp_us, is_emergency_stop: false, points: [{ x, y, yaw, target_velocity }, ...] } }`"*
+- **Deliverables Implemented:**
+  - **3D Trajectory Ribbon Highway**: Dynamic mesh generation sampling waypoint positions $(x, y)$ with lateral normal offsets based on waypoint $yaw$, rendered as a glowing neon cyan path with transparent emissive highway ribbon.
+  - **Heading & Waypoint Orientation**: Directional `ArrowHelper` arrows and discs at each waypoint indicating the vehicle's planned heading angle $\theta$ (yaw).
+  - **Target Velocity Beacon & Text Tag**: End-of-trajectory pulsing beacon ring with a billboard text sprite displaying `v_tgt: X.X m/s` or `EMERGENCY STOP`.
+  - **Emergency Stop Safety Mode**: Dynamic style shifting when `is_emergency_stop: true` — transitions ribbon, arrows, HUD badges, and cards to emergency red with hazard warnings.
+  - **2D Camera Viewfinder Projection**: Perspective-projected trajectory path line and waypoint dots superimposed onto the live 640×480 camera overlay.
+  - **Planned Trajectory Telemetry Card**: Real-time left dashboard card displaying Target Velocity (m/s & km/h), Lookahead Distance (m), End Yaw (rad & deg), and Mode/E-Stop status.
+  - **Waypoint Inspector Panel**: Right-side collapsible card showing ordered discrete waypoints with coordinate coordinates $(x, y)$, heading yaw, and target speed.
+  - **Sample Datasets & HUD Badges**: Updated sample payloads and top-right HUD with live waypoint counters.
 

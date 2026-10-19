@@ -190,6 +190,47 @@
             </div>
           </div>
 
+          <!-- Planned Trajectory Card -->
+          <div class="stream-card" id="dash-traj-card">
+            <div class="stream-card-header">
+              <span class="stream-card-title">Planned Trajectory</span>
+              <span class="stream-pill" id="traj-status-pill">No Plan</span>
+            </div>
+            <div class="telemetry-grid">
+              <div class="telemetry-stat">
+                <span class="stat-label">Target Speed</span>
+                <div class="stat-main">
+                  <span class="stat-value font-mono" id="traj-target-vel">0.00</span>
+                  <span class="stat-unit">m/s</span>
+                </div>
+                <span class="stat-sub" id="traj-target-vel-kmh">0.0 km/h</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">Lookahead</span>
+                <div class="stat-main">
+                  <span class="stat-value font-mono" id="traj-lookahead">0.00</span>
+                  <span class="stat-unit">m</span>
+                </div>
+                <span class="stat-sub" id="traj-points-count">0 waypoints</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">End Yaw</span>
+                <div class="stat-main">
+                  <span class="stat-value font-mono" id="traj-end-yaw">0.000</span>
+                  <span class="stat-unit">rad</span>
+                </div>
+                <span class="stat-sub" id="traj-end-yaw-deg">0.0°</span>
+              </div>
+              <div class="telemetry-stat">
+                <span class="stat-label">Mode / E-Stop</span>
+                <div class="stat-main">
+                  <span class="stat-value font-mono" id="traj-estop-status" style="font-size:11px;">NORMAL</span>
+                </div>
+                <span class="stat-sub" id="traj-mode-sub">Path Active</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Quick Action Buttons -->
           <div class="stream-actions">
             <button class="btn-action" id="btn-snapshot-json" title="Copy current live frame JSON to Manual tab for inspection">
@@ -291,6 +332,10 @@
             <span class="hud-label">Lanes</span>
             <span class="hud-value" id="hud-lanes">—</span>
           </div>
+          <div class="hud-row">
+            <span class="hud-label">Traj</span>
+            <span class="hud-value" id="hud-traj">—</span>
+          </div>
         </div>
 
         <!-- HUD: Bottom-Left (Controls hint + 2D Cam toggle) -->
@@ -388,6 +433,14 @@
       </div>
       <div class="lane-info" id="lane-info">
         <div class="empty-state">No lane data.</div>
+      </div>
+
+      <div class="panel-header" style="margin-top: 12px;">
+        <span class="panel-title">Planned Trajectory</span>
+        <span class="panel-badge-count" id="count-traj-points">0 pts</span>
+      </div>
+      <div class="object-list" id="trajectory-list">
+        <div class="empty-state">No trajectory planned.</div>
       </div>
     </aside>
 
